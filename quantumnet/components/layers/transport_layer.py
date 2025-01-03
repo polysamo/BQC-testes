@@ -574,12 +574,13 @@ class TransportLayer:
                 total_eprs_used += 1
                 self._network.remove_epr(node1, node2)
 
+            self._network.timeslot()
             # Teletransportar qubit
             if alice.memory:
-                self._network.timeslot()
+                # self._network.timeslot()
                 qubit_alice = alice.memory.pop(0)
                 f_qubit = qubit_alice.get_current_fidelity()
-                F_final = f_qubit * f_route
+                F_final = f_route
                 qubit_alice.fidelity = F_final
                 bob.memory.append(qubit_alice)
 

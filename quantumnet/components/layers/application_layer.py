@@ -213,7 +213,6 @@ class ApplicationLayer:
         self.logger.log(f"Alice recebeu {len(qubits)} qubits. Total: {len(alice.memory)} qubits na memória.")
 
         # Cria mensagem clássica com instruções
-        self._network.timeslot()
         operations_classical_message = [self.generate_random_operation() for _ in qubits]
         self.logger.log(f"Instruções clássicas enviadas pelo Cliente: {operations_classical_message}")
 
@@ -243,7 +242,9 @@ class ApplicationLayer:
         self.logger.log(f"Servidor tem {len(bob.memory)} qubits na memória após a recepção.")
 
         # Servidor aplica operações
-        self._network.timeslot()
+        for _ in range(10):
+            self._network.timeslot()
+            self.logger.log(f"Timeslot {self._network.get_timeslot()}: Servidor aplicando operações nos qubits.")
         for qubit, operation in zip(qubits, operations_classical_message):
             self.apply_operation_from_message(qubit, operation)
         self.logger.log("Servidor aplicou as operações instruídas pelo Cliente nos qubits.")
@@ -274,7 +275,6 @@ class ApplicationLayer:
             self.logger.log(f"Qubit {qubit.qubit_id} devolvido para o cliente - Estado: {qubit._qubit_state}, Fase: {qubit._phase}")
 
         # Decodificação Clifford
-        self._network.timeslot()
         for qubit, operation in zip(qubits, operations_classical_message):
             self.apply_clifford_decoding(qubit, operation)
             self.logger.log(f"Cliente aplicou a decodificação Clifford no qubit {qubit.qubit_id}.")

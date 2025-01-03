@@ -647,7 +647,7 @@ class Network():
     #0.0009875
     #0.00077 o melhor pra testes
     # 0.00057 A QUE ESTOU TESTANDO
-    def apply_decoherence_to_all_layers(self, decoherence_factor: float = 0.00057):
+    def apply_decoherence_to_all_layers(self, decoherence_factor: float = 0.005):
         """
         Aplica decoerência a todos os qubits e EPRs nas camadas da rede que já avançaram nos timeslots.
         """
