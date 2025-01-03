@@ -781,7 +781,8 @@ class Network():
         for instr in saved_instructions:
             self.logger.log(f"Instrução: {instr}")
 
-        return qc, num_qubits
+        circuit_depth = qc.depth()
+        return qc, num_qubits, circuit_depth
 
     def save_circuit_instructions(self, circuit):
         """
@@ -824,7 +825,7 @@ class Network():
             protocols = random.choice(['AC_BQC', 'BFK_BQC'])  # Caso a lista esteja vazia, escolhe aleatoriamente
         
         # Gere um circuito quântico aleatório
-        quantum_circuit = self.generate_random_circuit(num_qubits, num_gates)
+        quantum_circuit,_,circuit_depth = self.generate_random_circuit(num_qubits, num_gates)
         
         # Cria a requisição com os dados fornecidos
         request = {
@@ -832,6 +833,7 @@ class Network():
             "bob_id": bob_id,
             "num_qubits": num_qubits,
             "quantum_circuit": quantum_circuit,
+            "circuit_depth": circuit_depth,
             "protocol": protocols, 
             "slice_path": slice_path,
             "scenario": scenario  
@@ -857,7 +859,7 @@ class Network():
             
         """
         # Gere um circuito quântico aleatório
-        quantum_circuit = self.generate_random_circuit(num_qubits, num_gates)
+        quantum_circuit,_, circuit_depth = self.generate_random_circuit(num_qubits, num_gates)
 
         # Cria a requisição com os dados fornecidos
         request = {
@@ -865,6 +867,7 @@ class Network():
             "bob_id": bob_id,
             "num_qubits": num_qubits,
             "quantum_circuit": quantum_circuit,
+            "circuit_depth": circuit_depth,
             "protocol": protocol,
             "slice_path": slice_path,
             "scenario":scenario 
@@ -920,33 +923,6 @@ class Network():
                 request['status'] = 'executado' if status else 'falhou'
                 self.logger.log(f"Requisição {request} - Status: {request['status']}")
 
-    # def execute_scheduled_requests(self, scheduled_requests, slice_paths=None):
-    #     """
-    #     Recebe e executa as requisições agendadas pelo controlador na rede.
-        
-    #     Args:
-    #         scheduled_requests (dict): Dicionário de requisições agendadas por timeslot.
-    #         slice_paths (dict, optional): Caminhos associados aos slices, se disponíveis.
-    #     """
-    #     for timeslot, requests in scheduled_requests.items():
-    #         # Reinicia a rede antes de processar o timeslot atual
-    #         self.logger.log(f"Reiniciando a rede antes de processar o timeslot {timeslot}.")
-    #         self.restart_network()  # Reinicializa a rede
-    #         self.logger.log(f"Rede reiniciada. Timeslot atual: {timeslot}.")
-
-    #         # Avança para o timeslot correspondente
-    #         while self.get_timeslot() < timeslot:
-    #             self.timeslot()  # Incrementa o timeslot da rede
-    #             self.logger.log(f"Timeslot avançado para {self.get_timeslot()}.")
-
-    #         # Executa as requisições do timeslot
-    #         self.logger.log(f"Executando requisições do timeslot {timeslot}.")
-    #         for request in requests:
-    #             # Adiciona status à requisição
-    #             status = self.execute_request(request, slice_paths)
-    #             request['status'] = 'executado' if status else 'falhou'
-    #             self.logger.log(f"Requisição {request} - Status: {request['status']}")
-
 
     def execute_request(self, request, slice_paths=None):
         """
@@ -962,6 +938,7 @@ class Network():
         protocol = request['protocol']
         quantum_circuit = request['quantum_circuit']
         num_rounds = request.get('num_rounds', 10)  
+        circuit_depth = request.get('circuit_depth')
         scenario = request.get('scenario')  # Obtém o cenário da requisição ou usa 1 como padrão
 
 
@@ -986,10 +963,10 @@ class Network():
         if protocol == "AC_BQC":
             success = self.application_layer.run_app("AC_BQC", alice_id=alice_id, bob_id=bob_id,
                                         num_qubits=num_qubits, circuit=quantum_circuit,
-                                        slice_path=slice_path,scenario=scenario)
+                                        slice_path=slice_path,scenario=scenario,circuit_depth=request.get('circuit_depth'))
         elif protocol == "BFK_BQC":
             success = self.application_layer.run_app("BFK_BQC", alice_id=alice_id, bob_id=bob_id,
-                                        num_qubits=num_qubits, num_rounds=num_rounds,
+                                        num_qubits=num_qubits, num_rounds=circuit_depth, 
                                         circuit=quantum_circuit, slice_path=slice_path,scenario=scenario)
         else:
             self.logger.log(f"Protocolo '{protocol}' não reconhecido.")
@@ -1004,3 +981,4 @@ class Network():
             self.logger.log(f"Falha ao executar requisição: {request}")
 
         return success
+

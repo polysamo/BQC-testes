@@ -69,7 +69,7 @@ class TransportLayer:
         success = False
 
         while attempts < max_attempts and not success:
-            self._network.timeslot()  # Incrementa o timeslot para cada tentativa de transmissão
+            #self._network.timeslot()  # Incrementa o timeslot para cada tentativa de transmissão
             self.logger.log(f'Timeslot {self._network.get_timeslot()}: Tentativa de transmissão {attempts + 1} entre {alice_id} e {bob_id}.')
             
             routes = []
@@ -123,8 +123,8 @@ class TransportLayer:
         returns:
             bool : True se o teletransporte foi bem-sucedido, False caso contrário.
         """
-        self._network.timeslot()  # Incrementa o timeslot para o protocolo de teletransporte
-        self.logger.log(f'Timeslot {self._network.get_timeslot()}: Iniciando teletransporte entre {alice_id} e {bob_id}.')
+        #self._network.timeslot()  # Incrementa o timeslot para o protocolo de teletransporte
+        #self.logger.log(f'Timeslot {self._network.get_timeslot()}: Iniciando teletransporte entre {alice_id} e {bob_id}.')
         
         # Estabelece uma rota válida
         route = self._network_layer.short_route_valid(alice_id, bob_id)
@@ -293,7 +293,7 @@ class TransportLayer:
                 f_route = sum(fidelities) / len(fidelities)
                 
                 if alice.memory:
-                    self._network.timeslot()
+                    #self._network.timeslot()
                     qubit_alice = alice.memory.pop(0)
                     f_alice = qubit_alice.get_current_fidelity()
                     
@@ -477,6 +477,7 @@ class TransportLayer:
     #         self.register_failed_request(alice_id, bob_id, num_qubits, route, "Transmissão imcompleta")
     #         return False
 
+
     def run_transport_layer_eprs(self, alice_id: int, bob_id: int, num_qubits: int, route=None, is_return=False, scenario=1):
         """
         Executa a requisição de transmissão e o protocolo de teletransporte para protocolo Andrews Childs.
@@ -604,6 +605,8 @@ class TransportLayer:
             self.logger.log(f'Transmissão falhou. Apenas {success_count} qubits foram transmitidos com sucesso.')
             self.register_failed_request(alice_id, bob_id, num_qubits, route, "Transmissão incompleta")
             return False
+
+
 
 
     def register_failed_request(self, alice_id, bob_id, num_qubits, route, reason):

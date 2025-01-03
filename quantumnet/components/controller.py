@@ -299,13 +299,21 @@ class Controller():
             current_timeslot += 1
         return current_timeslot
 
+    # def prioritize_requests(self):
+    #     """
+    #     Ordena as requisições pendentes com base em critérios de prioridade.
+    #     """
+    #     # Verifica se quantum_circuit é um objeto válido
+    #     self.pending_requests.sort(key=lambda req: (req['num_qubits'], -len(req['quantum_circuit'][0].data)))
+    
     def prioritize_requests(self):
         """
         Ordena as requisições pendentes com base em critérios de prioridade.
         """
-        # Verifica se quantum_circuit é um objeto válido
-        self.pending_requests.sort(key=lambda req: (req['num_qubits'], -len(req['quantum_circuit'][0].data)))
+        # Ordena por número de qubits e, em seguida, pelo número de instruções no circuito
+        self.pending_requests.sort(key=lambda req: (req['num_qubits'], -len(req['quantum_circuit'].data)))
 
+    
     def generate_schedule_report(self):
         """
         Gera um relatório das requisições processadas, agendadas e falhas.
