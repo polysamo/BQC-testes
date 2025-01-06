@@ -42,7 +42,7 @@ class ApplicationLayer:
     
     def run_app(self, app_name, alice_id, bob_id, **kwargs):
         num_qubits = kwargs.get('num_qubits', 10)
-        num_rounds = kwargs.get('num_rounds', 10)
+        num_rounds = kwargs.get('num_rounds', None)
         slice_path = kwargs.get('slice_path', None)  # Extrai o slice_path de kwargs se existir
         scenario = kwargs.get('scenario',None)
         circuit_depth = kwargs.get('circuit_depth', None) 
@@ -55,7 +55,7 @@ class ApplicationLayer:
             return self.run_andrews_childs_protocol(alice_id, bob_id, num_qubits, slice_path=slice_path, scenario=scenario,circuit_depth=circuit_depth)
         elif app_name == "BFK_BQC":
             # Também passamos slice_path aqui
-            return self.bfk_protocol(alice_id, bob_id, num_qubits, num_rounds, slice_path=slice_path, scenario=scenario)
+            return self.bfk_protocol(alice_id, bob_id, num_qubits, num_rounds, slice_path=slice_path, scenario=scenario,circuit_depth=circuit_depth)
         else:
             self.logger.log("Aplicação não realizada ou não encontrada.")
             return False
@@ -490,6 +490,10 @@ class ApplicationLayer:
         if num_rounds is None:
             num_rounds = circuit_depth if circuit_depth is not None else num_qubits
 
+        self.logger.log(f"Protocolo configurado para {num_rounds} rodadas.")
+
+        print(f"Tempo de Operação: {circuit_depth}")
+        
         self._network.timeslot()
         self.logger.log(f"Timeslot {self._network.get_timeslot()}. Iniciando protocolo BFK com {num_qubits} qubits, {num_rounds} rodadas, e cenário {scenario}.")
 
@@ -549,10 +553,10 @@ class ApplicationLayer:
             return None
 
         # Cliente instrui o servidor a medir os qubits em cada rodada
-        measurement_results = self.run_computation(client_id, server_id, num_rounds, qubits)
+        results = self.run_computation(client_id, server_id, num_rounds, qubits)
 
-        self.logger.log(f"Protocolo BFK concluído com sucesso. Resultados: {measurement_results}")
-        return measurement_results
+        self.logger.log(f"Protocolo BFK concluído com sucesso. Resultados: {results}")
+        return results
 
 
     def prepare_qubits(self, alice_id, num_qubits):
@@ -566,6 +570,7 @@ class ApplicationLayer:
             self.logger.log(f"Qubit {qubit.qubit_id} preparado pelo cliente {alice_id}.")
         assert len(qubits) == num_qubits, "Número de qubits preparados não corresponde ao esperado."
         return qubits
+    
 
     def create_brickwork_state(self, bob_id, qubits):
         """
@@ -587,9 +592,10 @@ class ApplicationLayer:
         self.logger.log(f"Servidor {bob_id} criou um estado de brickwork com {len(qubits)} qubits.")
         return True
 
+    
     def run_computation(self, alice_id, bob_id, num_rounds, qubits):
         """
-        Cliente instrui o servidor a realizar medições nos qubits durante as rodadas de computação.
+        Cliente instrui o servidor a realizar medições em todos os qubits durante as rodadas de computação.
 
         Args:
             alice_id (int): ID do cliente que fornece instruções.
@@ -598,35 +604,81 @@ class ApplicationLayer:
             qubits (list): Lista de qubits a serem medidos.
 
         Returns:
-            list: Resultados das medições realizadas pelo servidor em cada rodada.
+            list: Resultados das medições realizadas pelo servidor em todas as rodadas.
         """
         client = self._network.get_host(alice_id)
         server = self._network.get_host(bob_id)
         measurement_results = []
 
-        if num_rounds != len(qubits):
-            num_rounds = len(qubits)
+        # Inicializa os ângulos de medição para todos os qubits
+        angles = [random.uniform(0, 2 * math.pi) for _ in qubits]
+        self.logger.log(f"Cliente {alice_id} inicializou ângulos de medição: {angles}")
 
+        # Executa as rodadas de computação
         for round_num in range(num_rounds):
-            # Cliente escolhe um ângulo aleatório de medição
-            theta = random.uniform(0, 2 * math.pi)
-            self.logger.log(f"Rodada {round_num + 1}: Cliente {alice_id} envia ângulo de medição {theta} ao servidor.")
-            
-            # Servidor mede o qubit na base fornecida pelo ângulo
-            self._network.timeslot()
-            self.logger.log(f"Timeslot {self._network.get_timeslot()}.Servidor realiza a medição do qubit.")
-            qubit = qubits[round_num]
-            result = qubit.measure_in_basis(theta)
-            measurement_results.append(result)
-            self.logger.log(f"Servidor {bob_id} realizou a medição do qubit na base {theta}, com resultado {result}.")
+            round_results = []
 
-            # Cliente ajusta a próxima base de medição de acordo com o resultado
-            self._network.timeslot()
-            self.logger.log(f"Timeslot {self._network.get_timeslot()}.Cliente ajusta a próxima base de medição.")
-            adjusted_theta = self.adjust_measurement_basis(theta, result)
-            self.logger.log(f"Cliente {alice_id} ajustou a próxima base de medição para {adjusted_theta}.")
+            # Medição de todos os qubits na rodada atual
+            for i, qubit in enumerate(qubits):
+                theta = angles[i]
+                self.logger.log(f"Rodada {round_num + 1}: Cliente {alice_id} instrui o servidor a medir o qubit {qubit.qubit_id} na base {theta}.")
+                
+                # Servidor realiza a medição
+                self._network.timeslot()
+                result = qubit.measure_in_basis(theta)
+                round_results.append(result)
+                self.logger.log(f"Servidor {bob_id} mediu o qubit {qubit.qubit_id} na base {theta}, resultado: {result}.")
 
+                # Cliente ajusta o ângulo para o próximo ciclo
+                angles[i] = self.adjust_measurement_basis(theta, result)
+
+            measurement_results.append(round_results)
+            self.logger.log(f"Resultados da rodada {round_num + 1}: {round_results}")
+
+        self.logger.log(f"Todas as rodadas concluídas. Resultados finais: {measurement_results[-1]}")
         return measurement_results
+
+    # def run_computation(self, alice_id, bob_id, num_rounds, qubits):
+    #     """
+    #     Cliente instrui o servidor a realizar medições nos qubits durante as rodadas de computação.
+
+    #     Args:
+    #         alice_id (int): ID do cliente que fornece instruções.
+    #         bob_id (int): ID do servidor que realiza as medições.
+    #         num_rounds (int): Número de rodadas de computação a serem executadas.
+    #         qubits (list): Lista de qubits a serem medidos.
+
+    #     Returns:
+    #         list: Resultados das medições realizadas pelo servidor em cada rodada.
+    #     """
+    #     client = self._network.get_host(alice_id)
+    #     server = self._network.get_host(bob_id)
+    #     measurement_results = []
+
+    #     if num_rounds != len(qubits):
+    #         num_rounds = len(qubits)
+
+    #     for round_num in range(num_rounds):
+    #         # Cliente escolhe um ângulo aleatório de medição
+    #         theta = random.uniform(0, 2 * math.pi)
+    #         self.logger.log(f"Rodada {round_num + 1}: Cliente {alice_id} envia ângulo de medição {theta} ao servidor.")
+            
+    #         # Servidor mede o qubit na base fornecida pelo ângulo
+    #         self._network.timeslot()
+    #         self.logger.log(f"Timeslot {self._network.get_timeslot()}.Servidor realiza a medição do qubit.")
+    #         qubit = qubits[round_num]
+    #         result = qubit.measure_in_basis(theta)
+    #         measurement_results.append(result)
+    #         self.logger.log(f"Servidor {bob_id} realizou a medição do qubit na base {theta}, com resultado {result}.")
+
+    #         # Cliente ajusta a próxima base de medição de acordo com o resultado
+    #         self._network.timeslot()
+    #         self.logger.log(f"Timeslot {self._network.get_timeslot()}.Cliente ajusta a próxima base de medição.")
+    #         adjusted_theta = self.adjust_measurement_basis(theta, result)
+    #         self.logger.log(f"Cliente {alice_id} ajustou a próxima base de medição para {adjusted_theta}.")
+
+    #     return measurement_results
+
 
     def adjust_measurement_basis(self, theta, result):
         """

@@ -607,8 +607,6 @@ class TransportLayer:
             return False
 
 
-
-
     def register_failed_request(self, alice_id, bob_id, num_qubits, route, reason):
         """
         Registra uma requisição que falhou diretamente no controlador.
