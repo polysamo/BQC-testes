@@ -313,7 +313,7 @@ class Controller():
         # Ordena por número de qubits e, em seguida, pelo número de instruções no circuito
         self.pending_requests.sort(key=lambda req: (req['num_qubits'], -len(req['quantum_circuit'].data)))
 
-    
+
     def generate_schedule_report(self):
         """
         Gera um relatório das requisições processadas, agendadas e falhas.
@@ -336,7 +336,10 @@ class Controller():
             for entry in self.executed_requests:
                 req = entry["request"]
                 ts = entry["timeslot"]
-                print(f"- {req} | Timeslot: {ts}")
+                circuit_depth = req.get("circuit_depth", "N/A")  # Obter a profundidade do circuito
+                print(f"- Alice ID: {req['alice_id']}, Bob ID: {req['bob_id']}, "
+                    f"Nº de Qubits: {req['num_qubits']}, Circuit Depth: {circuit_depth}, "
+                    f"Timeslot: {ts}")
 
         # Requisições agendadas
         if self.scheduled_requests:
@@ -344,7 +347,9 @@ class Controller():
             for ts, requests in self.scheduled_requests.items():
                 print(f"Timeslot {ts}:")
                 for req in requests:
-                    print(f"- {req}")
+                    circuit_depth = req.get("circuit_depth", "N/A")  # Obter a profundidade do circuito
+                    print(f"- Alice ID: {req['alice_id']}, Bob ID: {req['bob_id']}, "
+                        f"Nº de Qubits: {req['num_qubits']}, Circuit Depth: {circuit_depth}")
 
         # Requisições que falharam
         if self.failed_requests:
@@ -353,13 +358,15 @@ class Controller():
                 req = failure['request']  # Detalhes da requisição
                 reason = failure.get('reason', 'Motivo não especificado')
                 route = failure.get('route', 'Não especificada')
+                circuit_depth = req.get("circuit_depth", "N/A")  # Obter a profundidade do circuito
                 print(f"- Alice ID: {req['alice_id']}, Bob ID: {req['bob_id']}, "
-                    f"Nº de Qubits: {req['num_qubits']}, Rota: {route}, "
-                    f"Motivo: {reason}")
+                    f"Nº de Qubits: {req['num_qubits']}, Circuit Depth: {circuit_depth}, "
+                    f"Rota: {route}, Motivo: {reason}")
                 report["failed_details"].append({
                     "alice_id": req['alice_id'],
                     "bob_id": req['bob_id'],
                     "num_qubits": req['num_qubits'],
+                    "circuit_depth": circuit_depth,  # Incluído no relatório detalhado
                     "route": route,
                     "reason": reason
                 })
@@ -367,47 +374,6 @@ class Controller():
         print("\n=== Fim do Relatório ===")
         
         return report
-
-    # def generate_schedule_report(self):
-    #     """
-    #     Gera um relatório das requisições processadas, agendadas e falhas.
-    #     """
-    #     if not self.executed_requests and not self.scheduled_requests and not self.failed_requests:
-    #         print("Nenhuma requisição foi processada, agendada ou falhou.")
-    #         return
-
-    #     print("=== Relatório de Requisições ===")
-        
-    #     # Requisições executadas com sucesso
-    #     if self.executed_requests:
-    #         print("\nRequisições Executadas:")
-    #         for entry in self.executed_requests:
-    #             req = entry["request"]
-    #             ts = entry["timeslot"]
-    #             print(f"- {req} | Timeslot: {ts}")
-
-    #     # Requisições agendadas
-    #     if self.scheduled_requests:
-    #         print("\nRequisições Agendadas:")
-    #         for ts, requests in self.scheduled_requests.items():
-    #             print(f"Timeslot {ts}:")
-    #             for req in requests:
-    #                 print(f"- {req}")
-
-    #     # Requisições que falharam
-    #     if self.failed_requests:
-    #         print("\nRequisições que falharam:")
-    #         for failure in self.failed_requests:
-    #             req = failure['request']  # Detalhes da requisição
-    #             reason = failure.get('reason', 'Motivo não especificado')
-    #             route = failure.get('route', 'Não especificada')
-    #             print(f"- Alice ID: {req['alice_id']}, Bob ID: {req['bob_id']}, "
-    #                 f"Nº de Qubits: {req['num_qubits']}, Rota: {route}, "
-    #                 f"Motivo: {reason}")
-    #             print(len(self.failed_requests))
-
-    #     print("\n=== Fim do Relatório ===")
-
 
     def send_scheduled_requests(self):
         """
@@ -467,7 +433,7 @@ class Controller():
             for timeslot, requests in scheduled_timeslots.items():
                 for request in requests:
                     protocol = request.get('protocol')
-                    slice_key = 'slice_1' if protocol == 'BFK_BQC' else 'slice_2'
+                    slice_key = 'slice_1' if protocol == 'AC_BQC' else 'slice_2'
                     path = slice_paths.get(slice_key)  # Tenta acessar a rota associada ao slice
                     if path:
                         request['slice_path'] = path
@@ -492,8 +458,8 @@ class Controller():
 
         # Mapeamento direto dos protocolos para slices
         protocol_to_slice = {
-            'BFK_BQC': 'slice_1',  # Protocolo BFK_BQC para slice 1
-            'AC_BQC': 'slice_2',   # Protocolo AC_BQC para slice 2
+            'AC_BQC': 'slice_1',  # Protocolo BFK_BQC para slice 1
+            'BFK_BQC': 'slice_2',   # Protocolo AC_BQC para slice 2
         }
 
         for request in requests:
@@ -540,7 +506,7 @@ class Controller():
     
     def print_report(self, scheduled_timeslots, slice_paths=None):
         """
-        Gera um relatório detalhado das requisições processadas, incluindo status.
+        Gera um relatório detalhado das requisições processadas, incluindo status e profundidade do circuito.
         
         Args:
             scheduled_timeslots (dict): Dicionário de requisições agendadas por timeslot.
@@ -558,6 +524,7 @@ class Controller():
             for request in requests:
                 status = request.get('status', 'pendente')
                 slice_path = request.get('slice_path', 'Não especificado')
+                circuit_depth = request.get('circuit_depth', 'N/A')  # Obtém a profundidade do circuito
 
                 # Contar sucessos e falhas
                 if status == 'executado':
@@ -567,7 +534,7 @@ class Controller():
 
                 print(f"- Requisição: Alice {request.get('alice_id', 'Desconhecido')} -> Bob {request.get('bob_id', 'Desconhecido')}, "
                     f"Protocolo: {request.get('protocol', 'Desconhecido')}, Nº de Qubits: {request.get('num_qubits', 'Desconhecido')}, "
-                    f"Slice Path: {slice_path}, Status: {status}")
+                    f"Circuit Depth: {circuit_depth}, Slice Path: {slice_path}, Status: {status}")
 
         print("\nResumo:")
         print(f"Total de sucessos: {total_success}")
@@ -579,40 +546,6 @@ class Controller():
             "failure_count": total_failed
         }
 
-    # def print_report(self, scheduled_timeslots, slice_paths=None):
-    #     """
-    #     Gera um relatório detalhado das requisições processadas, incluindo status.
-        
-    #     Args:
-    #         scheduled_timeslots (dict): Dicionário de requisições agendadas por timeslot.
-    #         slice_paths (dict, optional): Caminhos associados aos slices.
-    #     """
-    #     print("\n=== Relatório de Requisições Executadas ===")
-    #     for timeslot, requests in scheduled_timeslots.items():
-    #         print(f"\nTimeslot {timeslot}:")
-    #         for request in requests:
-    #             status = request.get('status', 'pendente')
-    #             slice_path = request.get('slice_path', 'Não especificado')
-    #             print(f"- Requisição: Alice {request.get('alice_id', 'Desconhecido')} -> Bob {request.get('bob_id', 'Desconhecido')}, "
-    #                 f"Protocolo: {request.get('protocol', 'Desconhecido')}, Nº de Qubits: {request.get('num_qubits', 'Desconhecido')}, "
-    #                 f"Slice Path: {slice_path}, Status: {status}")
-    #     print("\n=== Fim do Relatório ===")
-
-
-    # def print_report(self, scheduled_requests):
-    #     """
-    #     Gera um relatório das requisições processadas, incluindo status.
-        
-    #     Args:
-    #         scheduled_requests (dict): Dicionário de requisições agendadas por timeslot.
-    #     """
-    #     print("\n=== Relatório de Requisições Executadas ===")
-    #     for timeslot, requests in scheduled_requests.items():
-    #         print(f"\nTimeslot {timeslot}:")
-    #         for request in requests:
-    #             status = request.get('status', 'pendente')
-    #             print(f"- Requisição: {request}, Status: {status}")
-    #     print("\n=== Fim do Relatório ===")
 
 
 
