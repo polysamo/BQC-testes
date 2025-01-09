@@ -272,91 +272,68 @@ class Network():
         self.logger.log(f"Topologia configurada: {graph_type} ({dimensions}) com {len(clients)} clientes e 1 servidor.")
         print("Topologia configurada com sucesso para slices!")
 
-
     def calculate_paths(self, clients, server):
         """
-        Calcula os caminhos para dois slices, garantindo mínimo overlap e compartilhamento de caminhos.
-        
+        Calcula os caminhos para cada cliente, com cada cliente correspondendo a um slice.
+
         Args:
             clients (list): IDs dos nós clientes.
             server (int): ID do nó servidor.
 
         Returns:
-            tuple: Duas listas de caminhos para os slices (slice_1_paths, slice_2_paths).
+            list: Lista contendo os caminhos para cada cliente (slice).
         """
-        slice_1_paths = []  
-        slice_2_paths = []  
-        
+        slice_paths = []  # Cada cliente será um slice
         edge_weights = nx.get_edge_attributes(self._graph, 'weight')
 
-        # Para o Slice 1, calcular os caminhos para os clientes
         for client in clients:
             # Caminho mais curto do cliente para o servidor
-            path_1 = nx.shortest_path(self._graph, source=client, target=server, weight='weight')
-            slice_1_paths.append(path_1)
-            
-            # Atualiza os pesos das arestas para dar preferência ao Slice 1
-            for i in range(len(path_1) - 1):
-                edge = (path_1[i], path_1[i + 1])
+            path = nx.shortest_path(self._graph, source=client, target=server, weight='weight')
+            slice_paths.append(path)
+
+            # Penaliza as arestas para evitar overlaps em slices futuros
+            for i in range(len(path) - 1):
+                edge = (path[i], path[i + 1])
                 edge_weights[edge] = edge_weights.get(edge, 1) + 10
                 reverse_edge = (edge[1], edge[0])
                 if reverse_edge in edge_weights:
                     edge_weights[reverse_edge] += 10
 
-        # Atualiza os pesos no grafo após o cálculo do Slice 1
-        nx.set_edge_attributes(self._graph, edge_weights, 'weight')
+            # Atualiza os pesos no grafo após o cálculo de cada slice
+            nx.set_edge_attributes(self._graph, edge_weights, 'weight')
 
-        # Para o Slice 2, calcular os caminhos para os clientes
-        for client in clients:
-            # Caminho mais curto do cliente para o servidor
-            path_2 = nx.shortest_path(self._graph, source=client, target=server, weight='weight')
-            slice_2_paths.append(path_2)
-            
-            # Penaliza as arestas que são comuns com o Slice 1
-            for i in range(len(path_2) - 1):
-                edge = (path_2[i], path_2[i + 1])
-                edge_weights[edge] = edge_weights.get(edge, 1) + 10
-                reverse_edge = (edge[1], edge[0])
-                if reverse_edge in edge_weights:
-                    edge_weights[reverse_edge] += 10
+        return slice_paths
 
-        final_slice_1_paths = [slice_1_paths[0]]  
-        final_slice_2_paths = [slice_2_paths[1]] 
-
-        return final_slice_1_paths, final_slice_2_paths
-
-
-    def visualize_slices(self, clients, server, slice_1_paths, slice_2_paths):
+    def visualize_slices(self, clients, server, slice_paths):
         """
-        Visualiza o grafo com os caminhos para ambos os slices distinguidos por cor.
+        Visualiza o grafo com os caminhos para múltiplos slices distinguidos por cores.
 
         Args:
             clients (list): IDs dos nós clientes.
             server (int): ID do nó servidor.
-            slice_1_paths (list): Lista de caminhos para o primeiro slice.
-            slice_2_paths (list): Lista de caminhos para o segundo slice.
+            slice_paths (list): Lista de caminhos para cada cliente (slice).
         """
-        pos = nx.spring_layout(self._graph)  # Gera as posições para o nó 
+        pos = nx.spring_layout(self._graph)
         plt.figure(figsize=(10, 10))
 
-        # Desenha a base do gráfico
+        # Desenha a base do grafo
         nx.draw(self._graph, pos, with_labels=True, node_size=500, node_color="lightgray", edge_color="gray")
 
         nx.draw_networkx_nodes(self._graph, pos, nodelist=[server], node_color="red", label="Server")
         nx.draw_networkx_nodes(self._graph, pos, nodelist=clients, node_color="blue", label="Clients")
 
-        # Desenha o caminho do slice 1
-        for path in slice_1_paths:
-            edges = [(path[i], path[i + 1]) for i in range(len(path) - 1)]
-            nx.draw_networkx_edges(self._graph, pos, edgelist=edges, edge_color="green", width=2, label="Slice 1")
+        # Define cores para os slices
+        colors = plt.cm.tab10.colors  # Paleta de cores
 
-        # Desenha o caminho do slice 2
-        for path in slice_2_paths:
+        # Desenha os caminhos de cada slice
+        for slice_index, path in enumerate(slice_paths):
             edges = [(path[i], path[i + 1]) for i in range(len(path) - 1)]
-            nx.draw_networkx_edges(self._graph, pos, edgelist=edges, edge_color="purple", width=3, label="Slice 2")
+            nx.draw_networkx_edges(self._graph, pos, edgelist=edges,
+                                edge_color=colors[slice_index % len(colors)], width=2,
+                                label=f"Slice {slice_index + 1}")
 
-        plt.title("Paths for Both Slices")
-        plt.legend(["Server", "Clients", "Slice 1", "Slice 2"])
+        plt.title("Paths for Slices")
+        plt.legend()
         plt.show()
 
     def run_slice_simulation(self, clients, server):
@@ -368,29 +345,28 @@ class Network():
             server (int): ID do nó servidor.
 
         Returns:
-            tuple: final_slice_1_paths, final_slice_2_paths
+            list: Lista de caminhos finais para cada cliente (slice).
         """
         # Configura pesos padrão
         for edge in self._graph.edges:
-            self._graph.edges[edge]['weight'] = 1  # Configura pesos padrão
+            self._graph.edges[edge]['weight'] = 1
 
         # Calcula os caminhos para os slices
-        slice_1, slice_2 = self.calculate_paths(clients, server)
+        slice_paths = self.calculate_paths(clients, server)
 
-        # Armazena as rotas como atributos da rede
-        self.final_slice_1_paths = slice_1
-        self.final_slice_2_paths = slice_2
+        # Armazena as rotas como atributo da rede
+        self.final_slice_paths = slice_paths
 
-        print("Final Slice 1 Paths:", self.final_slice_1_paths)
-        print("Final Slice 2 Paths:", self.final_slice_2_paths)
+        print(f"Final Slice Paths for {len(clients)} slices:", self.final_slice_paths)
 
         # Visualiza os slices
-        self.visualize_slices(clients, server, slice_1, slice_2)
+        self.visualize_slices(clients, server, slice_paths)
 
         self.logger.log(f"Simulação de slices concluída para {len(clients)} clientes e servidor {server}.")
 
-        # Retorna os caminhos para a camada de aplicação poder utilizá-los
-        return self.final_slice_1_paths, self.final_slice_2_paths
+        # Retorna os caminhos para a camada de aplicação
+        return self.final_slice_paths
+    
 
         
     def set_ready_topology(self, topology_name: str, num_clients: int, *args: int, clients=None, server=None) -> None:
