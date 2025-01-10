@@ -18,85 +18,23 @@ class Controller():
         self.scheduled_requests_slice = defaultdict(list)
         self.slices = {}
         self.failed_requests = []
-
-    # def initialize_slices(self, network, clients, server, protocols, slice_1_paths, slice_2_paths):
-    #     """
-    #     Inicializa os slices, suas rotas associadas e vincula cada slice a um protocolo.
-
-    #     Args:
-    #         network (Network): Instância da rede configurada.
-    #         clients (list): Lista de IDs dos clientes.
-    #         server (int): ID do servidor.
-    #         protocols (list): Lista de protocolos para configurar os slices.
-    #         slice_1_paths (list): Rotas calculadas para o slice 1.
-    #         slice_2_paths (list): Rotas calculadas para o slice 2.
-    #     """
-    #     # Passando as rotas diretamente para os atributos
-    #     self.final_slice_1_paths = [slice_1_paths[0]]  
-    #     self.final_slice_2_paths = [slice_2_paths[0]] 
-
-    #     # Inicializa os slices
-    #     for i, protocol in enumerate(protocols, start=1):
-    #         slice_id = f'slice_{i}'
-
-    #         # Atribui as rotas aos slices com base nos protocolos
-    #         if i == 1:  # Protocolo 1
-    #             self.slices[slice_id] = {
-    #                 "client": self.final_slice_1_paths[0], 
-    #             }
-    #         elif i == 2:  # Protocolo 2
-    #             self.slices[slice_id] = {
-    #                 "client": self.final_slice_2_paths[0],  
-    #             }
-    #         else:
-    #             raise ValueError("Somente dois slices são suportados atualmente.")
-            
-    #         # Inicializa a lista de requisições do protocolo
-    #         self.scheduled_requests_slice[protocol] = []
-            
-    #         # Registra as rotas e protocolos nos logs
-    #         self.logger.log(f"Slice {slice_id} configurado para protocolo {protocol} com rotas: {self.slices[slice_id]}")
-
+        
     def initialize_slices(self, network, clients, server, protocols, slice_paths_list):
-        """
-        Inicializa múltiplos slices, suas rotas associadas e vincula cada slice a um protocolo.
-
-        Args:
-            network (Network): Instância da rede configurada.
-            clients (list): Lista de IDs dos clientes.
-            server (int): ID do servidor.
-            protocols (list): Lista de protocolos para configurar os slices.
-            slice_paths_list (list): Lista de listas contendo as rotas calculadas para cada slice.
-        """
         if len(clients) != len(protocols) or len(protocols) != len(slice_paths_list):
-            raise ValueError(
-                "O número de clientes, protocolos e rotas deve ser igual."
-            )
+            raise ValueError("O número de clientes, protocolos e rotas deve ser igual.")
 
-        # Inicializa os slices dinamicamente
         for i, (client, protocol, slice_paths) in enumerate(zip(clients, protocols, slice_paths_list), start=1):
             slice_id = f'slice_{i}'
 
-            # Configura o slice
             self.slices[slice_id] = {
                 "client": client,
                 "server": server,
-                "path": slice_paths,
+                "path": slice_paths,  # Garantir que o slice_paths seja a lista correta
                 "protocol": protocol,
             }
 
-            # Inicializa a lista de requisições para este protocolo, se ainda não existir
-            if protocol not in self.scheduled_requests_slice:
-                self.scheduled_requests_slice[protocol] = []
-
-            # Log de configuração
-            self.logger.log(f"Slice {slice_id} configurado:")
-            self.logger.log(f"  - Cliente: {client}")
-            self.logger.log(f"  - Servidor: {server}")
-            self.logger.log(f"  - Caminho: {slice_paths}")
-            self.logger.log(f"  - Protocolo: {protocol}")
-
-        print(f"{len(clients)} slices configurados com sucesso!")
+            # Log de configuração para depuração
+            self.logger.log(f"Slice {slice_id} configurado com cliente {client}, servidor {server}, protocolo {protocol} e caminho {slice_paths}.")
 
 
     def create_routing_table(self, host_id: int) -> dict:
@@ -436,41 +374,37 @@ class Controller():
 
     # # SIMULAÇÃO EM SLICES
     def schedule_requests(self, requests, slice_paths=None, protocols=None):
-        """
-        Mapeia as requisições para slices e agenda-as em timeslots, respeitando o número de slices disponíveis.
-
-        Args:
-            requests (list): Lista de requisições.
-            slice_paths (dict, optional): Caminhos dos slices.
-            protocols (list, optional): Lista de protocolos disponíveis.
-
-        Returns:
-            dict: Timeslots com requisições agendadas.
-        """
-        if protocols is None:
-            raise ValueError("A lista de protocolos não foi fornecida.")
+        if protocols is None or slice_paths is None:
+            raise ValueError("Protocolos e slice_paths devem ser fornecidos.")
 
         scheduled_timeslots = {}
         current_timeslot = 1
-        num_slices = len(slice_paths)  # Determina a capacidade máxima por timeslot
 
-        # Itera sobre as requisições agrupando-as por timeslot
+        # Mapeia as requisições para os slices corretos
+        for request in requests:
+            protocol = request.get('protocol')
+            if not protocol:
+                raise ValueError(f"Requisição sem protocolo: {request}")
+
+            slice_key = None
+            for key, slice_data in slice_paths.items():
+                if slice_data["client"] == request["alice_id"] and slice_data["protocol"] == protocol:
+                    slice_key = key
+                    break
+
+            if slice_key:
+                request['slice_path'] = slice_paths[slice_key]["path"]  # Vincula o caminho correto
+            else:
+                raise ValueError(f"Nenhum slice encontrado para a requisição: {request}")
+
+        # Agrupa as requisições por timeslot
+        num_slices = len(slice_paths)
         for i in range(0, len(requests), num_slices):
             scheduled_timeslots[current_timeslot] = requests[i:i + num_slices]
             current_timeslot += 1
 
-        # Adiciona slice paths às requisições
-        if slice_paths:
-            for timeslot, timeslot_requests in scheduled_timeslots.items():
-                for request in timeslot_requests:
-                    protocol = request.get('protocol')
-                    slice_id = f"slice_{protocols.index(protocol) + 1}"  # Identifica o slice pelo protocolo
-                    path = slice_paths.get(slice_id)
-                    if path:
-                        request['slice_path'] = path
-
-        self.logger.log(f"Requisições agendadas em timeslots: {scheduled_timeslots}")
         return scheduled_timeslots
+
 
 
     def map_requests_to_slices(self, requests, protocol_to_slice):
@@ -497,88 +431,6 @@ class Controller():
             slice_requests[slice_id].append(request)
 
         return slice_requests
-
-
-    # def schedule_requests(self, requests, slice_paths=None):
-    #     """
-    #     Mapeia as requisições para slices e agenda-as em timeslots.
-
-    #     Args:
-    #         requests (list): Lista de requisições.
-    #         slice_paths (dict, optional): Dicionário com os caminhos dos slices. Se não fornecido, será considerado None.
-
-    #     Returns:
-    #         dict: Timeslots com requisições agendadas.
-    #     """
-    #     scheduled_timeslots = {}
-    #     current_timeslot = 1
-
-    #     # Mapeia as requisições para os slices corretos
-    #     for request in requests:
-    #         protocol = request.get('protocol')
-    #         for slice_id, slice_protocol in self.scheduled_requests_slice.items():
-    #             if protocol == slice_id:
-    #                 self.scheduled_requests_slice[protocol].append(request)
-
-    #     # Alterna entre slices para agendar
-    #     while any(self.scheduled_requests_slice.values()):
-    #         current_slot_requests = []
-
-    #         for protocol, requests in self.scheduled_requests_slice.items():
-    #             if requests:
-    #                 current_slot_requests.append(requests.pop(0))
-
-    #         if current_slot_requests:
-    #             scheduled_timeslots[current_timeslot] = current_slot_requests
-    #             current_timeslot += 1
-
-    #     # Verificar se slice_paths não é None antes de tentar acessar
-    #     if slice_paths:
-    #         for timeslot, requests in scheduled_timeslots.items():
-    #             for request in requests:
-    #                 protocol = request.get('protocol')
-    #                 slice_key = 'slice_1' if protocol == 'AC_BQC' else 'slice_2'
-    #                 path = slice_paths.get(slice_key)  # Tenta acessar a rota associada ao slice
-    #                 if path:
-    #                     request['slice_path'] = path
-    #                 else:
-    #                     self.logger.log(f"Warning: Nenhum caminho encontrado para o slice '{slice_key}'.")
-
-    #     self.logger.log(f"Requisições agendadas em timeslots: {scheduled_timeslots}")
-    #     return scheduled_timeslots
-    
-
-    # def map_requests_to_slices(self, requests):
-    #     """
-    #     Mapeia as requisições para slices com base no protocolo.
-
-    #     Args:
-    #         requests (list): Lista de requisições.
-
-    #     Returns:
-    #         dict: Requisições separadas por slices.
-    #     """
-    #     slice_requests = {}
-
-    #     # Mapeamento direto dos protocolos para slices
-    #     protocol_to_slice = {
-    #         'AC_BQC': 'slice_1',  # Protocolo BFK_BQC para slice 1
-    #         'BFK_BQC': 'slice_2',   # Protocolo AC_BQC para slice 2
-    #     }
-
-    #     for request in requests:
-    #         protocol = request.get('protocol')
-            
-    #         # Atribui o slice correto com base no protocolo
-    #         slice_id = protocol_to_slice.get(protocol)
-    #         if slice_id is None:
-    #             raise ValueError(f"Protocolo {protocol} não encontrado para mapeamento de slice.")
-            
-    #         if slice_id not in slice_requests:
-    #             slice_requests[slice_id] = []
-    #         slice_requests[slice_id].append(request)
-
-    #     return slice_requests
     
 
     def schedule_requests_in_timeslots(self, slice_requests):
@@ -650,48 +502,7 @@ class Controller():
             "failure_count": total_failed
         }
 
-        
-    # def print_report(self, scheduled_timeslots, slice_paths=None):
-    #     """
-    #     Gera um relatório detalhado das requisições processadas, incluindo status e profundidade do circuito.
-        
-    #     Args:
-    #         scheduled_timeslots (dict): Dicionário de requisições agendadas por timeslot.
-    #         slice_paths (dict, optional): Caminhos associados aos slices.
 
-    #     Returns:
-    #         dict: Contagem de sucessos e falhas.
-    #     """
-    #     print("\n=== Relatório de Requisições Executadas ===")
-    #     total_success = 0
-    #     total_failed = 0
-
-    #     for timeslot, requests in scheduled_timeslots.items():
-    #         print(f"\nTimeslot {timeslot}:")
-    #         for request in requests:
-    #             status = request.get('status', 'pendente')
-    #             slice_path = request.get('slice_path', 'Não especificado')
-    #             circuit_depth = request.get('circuit_depth', 'N/A')  # Obtém a profundidade do circuito
-
-    #             # Contar sucessos e falhas
-    #             if status == 'executado':
-    #                 total_success += 1
-    #             elif status == 'falhou':
-    #                 total_failed += 1
-
-    #             print(f"- Requisição: Alice {request.get('alice_id', 'Desconhecido')} -> Bob {request.get('bob_id', 'Desconhecido')}, "
-    #                 f"Protocolo: {request.get('protocol', 'Desconhecido')}, Nº de Qubits: {request.get('num_qubits', 'Desconhecido')}, "
-    #                 f"Circuit Depth: {circuit_depth}, Slice Path: {slice_path}, Status: {status}")
-
-    #     print("\nResumo:")
-    #     print(f"Total de sucessos: {total_success}")
-    #     print(f"Total de falhas: {total_failed}")
-    #     print("\n=== Fim do Relatório ===")
-
-    #     return {
-    #         "success_count": total_success,
-    #         "failure_count": total_failed
-    #     }
 
 
 

@@ -367,7 +367,6 @@ class Network():
         # Retorna os caminhos para a camada de aplicação
         return self.final_slice_paths
     
-
         
     def set_ready_topology(self, topology_name: str, num_clients: int, *args: int, clients=None, server=None) -> None:
         """
@@ -449,7 +448,7 @@ class Network():
         """
         for host_id in self._hosts:
             # Evita que o servidor (host 0) receba qubits
-            if host_id == 0:
+            if host_id == 10:
                 self.logger.log(f"Host {host_id} é o servidor, não receberá qubits.")
                 continue
             
@@ -898,12 +897,12 @@ class Network():
                 status = self.execute_request(request, slice_paths)
                 request['status'] = 'executado' if status else 'falhou'
                 self.logger.log(f"Requisição {request} - Status: {request['status']}")
-
-
+                
+                
     def execute_request(self, request, slice_paths=None):
         """
         Executa uma requisição, enviando os detalhes para a camada de aplicação da rede.
-        
+
         Args:
             request (dict): Requisição contendo informações como Alice, Bob, circuito, qubits e opcionalmente slice_path.
             slice_paths (dict, optional): Dicionário com os caminhos dos slices. Se None, tenta usar o slice_path da requisição ou cálculo automático.
@@ -911,50 +910,65 @@ class Network():
         alice_id = request['alice_id']
         bob_id = request['bob_id']
         num_qubits = request['num_qubits']
-        protocol = request['protocol']
-        quantum_circuit = request['quantum_circuit']
-        num_rounds = request.get('num_rounds', 10)  
-        circuit_depth = request.get('circuit_depth')
-        scenario = request.get('scenario')  # Obtém o cenário da requisição ou usa 1 como padrão
-
+        protocol = request.get('protocol', 'generic')  # Protocolo padrão para simulação sem slices
+        quantum_circuit = request.get('quantum_circuit', None)
+        circuit_depth = request.get('circuit_depth', 0)
+        scenario = request.get('scenario', 1)
 
         self.logger.log(f"Executando requisição: Alice {alice_id} -> Bob {bob_id}, Protocolo: {protocol}")
 
         # Verifica se a requisição já possui um slice_path
         slice_path = request.get('slice_path', None)
+        route = None
 
-        # Se não houver slice_path na requisição e slice_paths foi fornecido, tenta extrair de slice_paths
-        if slice_path is None and slice_paths:
-            slice_key = 'slice_1' if protocol == 'BFK_BQC' else 'slice_2'
-            slice_path = slice_paths.get(slice_key)
-            if slice_path:
-                self.logger.log(f"Caminho para {slice_key}: {slice_path}")
-                request['slice_path'] = slice_path
+        # Valida e extrai a rota
+        if slice_path:
+            self.logger.log(f"Slice Path fornecido: {slice_path}")
+            if isinstance(slice_path, dict):
+                route = slice_path.get('path', None)  # Extrai a rota do dicionário
+                if not route:
+                    raise ValueError(f"O slice_path fornecido é inválido: {slice_path}")
+            elif isinstance(slice_path, list):
+                route = slice_path  # Já é uma lista
             else:
-                self.logger.log(f"Warning: Nenhum caminho encontrado para o slice '{slice_key}'.")
+                raise ValueError(f"Formato inválido para slice_path: {slice_path}")
+        else:
+            # Se não há slice_path, calcula a rota automaticamente
+            self.logger.log("Nenhum slice_path fornecido. Tentando calcular rota automaticamente.")
+            route = self.networklayer.short_route_valid(alice_id, bob_id)
+
+        if not route:
+            raise ValueError("Nenhuma rota válida foi encontrada para a requisição.")
+
+        if not isinstance(route, list):
+            raise ValueError(f"Rota inválida: {route}. Esperado uma lista.")
+
+        # Log da rota antes de continuar
+        self.logger.log(f"Rota extraída para execução: {route}")
 
         success = False
-        
         # Executa o protocolo específico
-        if protocol == "AC_BQC":
-            success = self.application_layer.run_app("AC_BQC", alice_id=alice_id, bob_id=bob_id,
-                                        num_qubits=num_qubits, circuit=quantum_circuit,
-                                        slice_path=slice_path,scenario=scenario,circuit_depth=request.get('circuit_depth'))
-        elif protocol == "BFK_BQC":
-            success = self.application_layer.run_app("BFK_BQC", alice_id=alice_id, bob_id=bob_id,
-                                        num_qubits=num_qubits, num_rounds=circuit_depth, 
-                                        circuit=quantum_circuit, slice_path=slice_path,scenario=scenario)
-        else:
-            self.logger.log(f"Protocolo '{protocol}' não reconhecido.")
-            request['status'] = 'erro'
-            return False
-        
+        try:
+            if protocol == "AC_BQC":
+                success = self.application_layer.run_app(
+                    "AC_BQC", alice_id=alice_id, bob_id=bob_id,
+                    num_qubits=num_qubits, circuit=quantum_circuit,
+                    slice_path=route, scenario=scenario, circuit_depth=circuit_depth)
+            elif protocol == "BFK_BQC":
+                success = self.application_layer.run_app(
+                    "BFK_BQC", alice_id=alice_id, bob_id=bob_id,
+                    num_qubits=num_qubits, num_rounds=circuit_depth,
+                    circuit=quantum_circuit, slice_path=route, scenario=scenario)
+            else:
+                # Simulação básica sem protocolo
+                success = self.transport_layer.simple_teleport(alice_id, bob_id, num_qubits, route, scenario)
+        except Exception as e:
+            self.logger.log(f"Erro ao executar protocolo: {str(e)}")
+            raise
+
+        # Atualiza o status da requisição
         request['status'] = 'executado' if success else 'falhou'
-        
-        if success:
-            self.logger.log(f"Requisição executada com sucesso: {request}")
-        else:
-            self.logger.log(f"Falha ao executar requisição: {request}")
+        self.logger.log(f"Resultado da execução: {request['status']}")
 
         return success
 
